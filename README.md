@@ -1,54 +1,156 @@
-# 注釈付きQRコード生成ツール
+# 注釈付きQRコード生成ツール（フルスタック版）
 
-URLを入力するだけで、QRコードとその上下に「日本語の注釈」を付与した画像を生成・ダウンロードできるWebアプリです。
+URLを入力するだけで、QRコードとその上下に日本語の注釈を付けた画像を生成・ダウンロードできるWebアプリです。
+Streamlit で作った同名アプリを、フロントエンドとバックエンドを分けた構成に作り直したポートフォリオ作品です。
 
-## 公開中のアプリ
-https://huggingface.co/spaces/Nishimura24/url-to-qr-generator
+---
+
+## Streamlit版との違い
+
+[Streamlit版（元の実装）](https://github.com/あなたのユーザー名/qr-generator-streamlit)はシンプルな単一スクリプトで動いていましたが、「Streamlitでは画面の自由度に限界がある」「他の場所からAPIとして呼び出せない」という点が気になっていました。
+
+そこで、就職後の開発現場で使われる構成に近づけることを目標に、React（フロントエンド）+ FastAPI（バックエンド）+ Docker という構成に作り直しました。
+
+---
 
 ## 開発の背景
-食品のラベルや書籍など、日常生活のあらゆる場面で信頼され活用されている「QRコード」という技術に深い関心を持ち、 **「この社会に不可欠な仕組みを、自分の力（独学）でゼロから構築してみたい」** という探究心から開発をスタートしました。
 
-単にプログラム上でQRコードを生成して完結させるのではなく、開発の過程で **「Web上の表示で終わらせず、名刺や掲示物として実際に印刷して活用することで、より現実社会での利便性が高まる」** という可能性に気づき、プロダクトとしての実用性を追求しました。
+Streamlit版を作った後、「動くものができた」だけで満足するのではなく、**もう一歩踏み込んで、実際の開発現場に近い構成で作り直してみたい**と思ったことが出発点です。
 
-### 実装時にこだわった点
+独学でフロントエンドとバックエンドを別々に勉強してきたので、それを一つのアプリとしてつなげて動かす経験がしたかったという気持ちもありました。
 
-既存のQRコード生成ツールの多くは、コードのみを出力するものが大半です。しかし、実務での運用を想定し、以下の2点にこだわって実装しました。
+### 作り直す中でこだわった点
 
-- **注釈テキストの付与**
-    - スマホをかざす前に「何のためのQRコードか」をテキストで伝えられるようにしました。
-    - 印刷して使う場面で、複数のQRコードを並べても内容を混同しないようにする目的もあります。
+- **ファイルを役割ごとに分ける**
+  - Streamlit版は `app.py` 一枚にロジックが全部書かれていました。今回は UI・API・DB処理・QR生成をそれぞれ別ファイルに分けて、どこに何が書いてあるかわかりやすい構成にしました。
 
-- **生成後に確認できるリンクボタン**
-    - わざわざスマホで読み取らなくても、ボタン一つでリンク先をブラウザで確認できるようにしました。
-    - 印刷後にURLの間違いに気づく、というミスを防ぐための機能です。
+- **フロントとバックをAPIで繋ぐ**
+  - React から FastAPI に fetch でリクエストを送る構成にしました。フロントとバックが独立しているので、将来どちらかだけ差し替えることもできます。
 
-- **生成履歴のDB保存**
-    - SQLiteを使用し、生成したURLと注釈をローカルDBに保存。
-    - サイドバーに履歴一覧を表示し、クリックすると入力欄に自動でセットされる。
+- **Dockerで環境をまとめる**
+  - `docker compose up --build` の1コマンドで、バックエンドもフロントエンドも立ち上がるようにしました。自分のPCでしか動かない、という状況をなくすのが目的です。
+
+- **データとアプリケーションの分離**
+  - SQLiteのデータベースファイルは `data/` フォルダに配置し、コードとデータを分離しました。
+
+---
+
+## 機能一覧
+
+- QRコード生成（URLまたは任意のテキスト）
+- 日本語注釈の追加（QRコードの上または下に配置）
+- 生成画像のPNGダウンロード
+- 生成後にリンク先をブラウザで確認できるボタン
+- 生成履歴の保存・一覧表示（クリックで入力欄に自動セット）
+- 履歴の個別削除
+- URLの形式チェック（http / https で始まっているか）
+
+---
+
 ## 使用技術
-- **Language:** Python 3.x
-- **Framework:** Streamlit
-- **Libraries:** 
-  - `qrcode` (QRコード生成)
-  - `Pillow` (画像処理・日本語描画)
+
+- **Language:** Python 3.11 / JavaScript
+- **Frontend:** React 19 + Vite 8
+- **Backend:** FastAPI
+- **Libraries:**
+  - `qrcode`（QRコード生成）
+  - `Pillow`（画像処理・日本語テキスト描画）
   - `sqlite3`（履歴の保存・取得）
-- **Infrastructure:** Streamlit Cloud
+- **Infrastructure:** Docker / Docker Compose
+- **Dev Environment:** WSL2 (Ubuntu)
+
+---
 
 ## フォルダ構成
-```text
-url-to-qr-generator/
-├── .devcontainer/    # VS Code用の開発環境設定
-├── .gitignore         # 不要なファイルの除外設定
-├── requirements.txt   # 依存ライブラリ一覧
-├── README.md          # 本ドキュメント
-└── src/               # アプリケーション本体
-    ├── app.py         # メインロジック
-    └── fonts/         # 日本語フォントファイル (NotoSansJP-Medium.ttf)
+
+```
+qr-generator-fullstack/
+├── backend/
+│   ├── data/
+│   │   └── history.db           # 生成履歴のデータベース
+│   ├── src/
+│   │   ├── fonts/
+│   │   │   └── NotoSansJP-Medium.ttf
+│   │   ├── database.py          # SQLiteの操作（保存・取得・削除）
+│   │   ├── main_api.py          # FastAPIのエンドポイント定義
+│   │   └── qr_service.py        # QRコード生成の処理
+│   ├── Dockerfile
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx              # メインのUI
+│   │   ├── api.js               # バックエンドへのリクエスト関数
+│   │   ├── index.css
+│   │   └── main.jsx
+│   ├── vite.config.js           # 開発時のプロキシ設定
+│   └── package.json
+├── docker-compose.yml
+└── README.md
 ```
 
-## 使い方
+---
 
-1. URLを入力欄に貼り付けます。
-2. 必要であれば注釈テキストと表示位置（上 or 下）を設定します。
-3. 「QRコードを生成」ボタンを押してプレビューを確認します。
-4. 問題がなければダウンロードボタンで画像を保存します。
+## APIエンドポイント
+
+| メソッド | パス | 説明 |
+|---|---|---|
+| `GET` | `/` | 動作確認用 |
+| `POST` | `/api/qr` | QRコードを生成してPNG画像を返す |
+| `GET` | `/api/history` | 生成履歴を取得（新しい順・最大20件） |
+| `DELETE` | `/api/history/{id}` | 指定した履歴を削除 |
+
+リクエスト例（POST /api/qr）:
+```json
+{
+  "url": "https://example.com",
+  "label_text": "公式LINEはこちら",
+  "label_position": "Top"
+}
+```
+
+`http://localhost:8000/docs` でFastAPIの自動生成ドキュメントを確認できます。
+
+---
+
+## セットアップ
+
+### 必要なもの
+
+- Docker / Docker Compose
+- （Windowsの場合）WSL2
+
+### 起動手順
+
+```bash
+# リポジトリをクローン
+git clone https://github.com/あなたのユーザー名/qr-generator-fullstack.git
+cd qr-generator-fullstack
+
+# コンテナを起動
+docker compose up --build
+```
+
+起動後、以下のURLにアクセスできます。
+
+- フロントエンド: http://localhost:5173
+- APIドキュメント: http://localhost:8000/docs
+
+### Dockerを使わない場合
+
+```bash
+# バックエンド
+cd backend
+pip install -r requirements.txt
+uvicorn src.main_api:app --reload --port 8000
+
+# フロントエンド（別ターミナルで）
+cd frontend
+npm install
+npm run dev
+```
+
+---
+
+## 作者
+
+GitHub: [Nishimura-Jin](https://github.com/Nishimura-Jin)

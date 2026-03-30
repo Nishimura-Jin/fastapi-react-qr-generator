@@ -1,6 +1,6 @@
 import sqlite3
 
-DB_PATH = "/app/history.db"
+DB_PATH = "/app/data/history.db"
 
 def init_db():
     with sqlite3.connect(DB_PATH) as conn:

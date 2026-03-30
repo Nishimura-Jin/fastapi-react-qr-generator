@@ -1,16 +1,13 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-
-// https://vite.dev/config/
-export default defineConfig({
-  plugins: [react()],
+export default {
   server: {
+    host: true,
+    port: 5173,
     proxy: {
-      // '/api' で始まるリクエストを Pythonサーバー（8000番）に転送する設定
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://backend:8000',
         changeOrigin: true,
+        secure: false,
       },
     },
   },
-})
+};
