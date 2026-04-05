@@ -43,3 +43,7 @@ def get_history():
 def delete_history(history_id: int):
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("DELETE FROM history WHERE id = ?", (history_id,))
+
+def delete_all_history():
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("DELETE FROM history")

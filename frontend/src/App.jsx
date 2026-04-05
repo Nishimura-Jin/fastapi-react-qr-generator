@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { deleteHistoryItem, fetchHistory, generateQR } from "./api";
+import { deleteAllHistory, deleteHistoryItem, fetchHistory, generateQR } from "./api";
 
 export default function App() {
   const [url, setUrl] = useState("");
@@ -27,6 +27,16 @@ export default function App() {
   useEffect(() => {
     loadHistory();
   }, []);
+
+  // ホスト名をファイル名に使う（例：qr_example.com.png）
+  const buildFileName = (rawUrl) => {
+    try {
+      const host = new URL(rawUrl).hostname;
+      return `qr_${host}.png`;
+    } catch {
+      return "qr.png";
+    }
+  };
 
   const handleGenerate = async () => {
     if (!url) {
@@ -86,6 +96,15 @@ export default function App() {
     }
   };
 
+  const handleDeleteAll = async () => {
+    try {
+      await deleteAllHistory();
+      await loadHistory();
+    } catch {
+      setError("履歴の削除に失敗しました");
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-start justify-center pt-10 px-4">
 
@@ -101,7 +120,17 @@ export default function App() {
           <aside className="fixed top-0 left-0 h-full w-80 bg-white shadow-2xl z-20 flex flex-col">
             <div className="flex items-center justify-between p-4 border-b">
               <h3 className="text-lg font-bold">履歴</h3>
-              <button onClick={() => setSidebarOpen(false)}>×</button>
+              <div className="flex items-center gap-3">
+                {history.length > 0 && (
+                  <button
+                    onClick={handleDeleteAll}
+                    className="text-sm text-red-400 hover:text-red-600"
+                  >
+                    全て削除
+                  </button>
+                )}
+                <button onClick={() => setSidebarOpen(false)}>×</button>
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -151,11 +180,38 @@ export default function App() {
 
             <details className="mb-4">
               <summary>注釈設定</summary>
-              <input
-                value={labelText}
-                onChange={(e) => setLabelText(e.target.value)}
-                className="w-full mt-2 p-2 border rounded"
-              />
+
+              <div className="mt-2 mb-2">
+                <label className="text-sm">注釈テキスト</label>
+                <input
+                  value={labelText}
+                  onChange={(e) => setLabelText(e.target.value)}
+                  className="w-full mt-1 p-2 border rounded"
+                />
+              </div>
+
+              <div className="flex gap-4 mt-2">
+                <label className="flex items-center gap-1 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    name="labelPosition"
+                    value="Top"
+                    checked={labelPosition === "Top"}
+                    onChange={() => setLabelPosition("Top")}
+                  />
+                  上に表示
+                </label>
+                <label className="flex items-center gap-1 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    name="labelPosition"
+                    value="Bottom"
+                    checked={labelPosition === "Bottom"}
+                    onChange={() => setLabelPosition("Bottom")}
+                  />
+                  下に表示
+                </label>
+              </div>
             </details>
 
             {error && <p className="text-red-500 mb-3">{error}</p>}
@@ -189,7 +245,7 @@ export default function App() {
                 {copied ? "コピー済み！" : "URLをコピー"}
               </button>
 
-              <a href={qrSrc} download>
+              <a href={qrSrc} download={buildFileName(generatedUrl)}>
                 <button className="w-full bg-gray-800 text-white py-2 rounded mb-2">
                   画像を保存
                 </button>

@@ -67,3 +67,13 @@ export const deleteHistoryItem = async (id) => {
 
   return true;
 };
+
+export const deleteAllHistory = async () => {
+  await apiFetch(
+    '/api/history',
+    { method: 'DELETE' },
+    '履歴の削除に失敗しました'
+  );
+
+  return true;
+};

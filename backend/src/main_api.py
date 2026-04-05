@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel, HttpUrl
 
-from .database import delete_history, get_history, init_db, save_history
+from .database import delete_all_history, delete_history, get_history, init_db, save_history
 from .qr_service import generate_qr_code
 
 logging.basicConfig(level=logging.INFO)
@@ -22,8 +22,8 @@ app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-    "http://localhost:5173",
-    "https://qr-generator-fullstack.vercel.app"],
+        "http://localhost:5173",
+        "https://qr-generator-fullstack.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -65,4 +65,10 @@ async def list_history():
 @app.delete("/api/history/{history_id}")
 async def remove_history(history_id: int):
     delete_history(history_id)
+    return {"ok": True}
+
+
+@app.delete("/api/history")
+async def remove_all_history():
+    delete_all_history()
     return {"ok": True}
