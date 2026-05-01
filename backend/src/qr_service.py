@@ -6,8 +6,33 @@ import qrcode
 from PIL import Image, ImageDraw, ImageFont
 
 
-def generate_qr_code(url: str, label_text: str = "", label_position: str = "Top") -> bytes:
-    qr = qrcode.make(url).convert("RGB")
+def build_qr_content(qr_type: str, content: str) -> str:
+    if qr_type == "url":
+        return content
+    elif qr_type == "text":
+        return content
+    elif qr_type == "email":
+        return f"mailto:{content}"
+    elif qr_type == "phone":
+        return f"tel:{content}"
+    elif qr_type == "wifi":
+        # content形式: "SSID,PASSWORD,WPA"
+        parts = content.split(",")
+        ssid = parts[0] if len(parts) > 0 else ""
+        password = parts[1] if len(parts) > 1 else ""
+        security = parts[2] if len(parts) > 2 else "WPA"
+        return f"WIFI:T:{security};S:{ssid};P:{password};;"
+    return content
+
+
+def generate_qr_code(
+    qr_type: str,
+    content: str,
+    label_text: str = "",
+    label_position: str = "Top",
+) -> bytes:
+    qr_content = build_qr_content(qr_type, content)
+    qr = qrcode.make(qr_content).convert("RGB")
 
     if not label_text:
         buf = BytesIO()
@@ -20,7 +45,7 @@ def generate_qr_code(url: str, label_text: str = "", label_position: str = "Top"
     font_path = os.path.join(
         os.path.dirname(__file__),
         "fonts",
-        "NotoSansJP-Medium.ttf"
+        "NotoSansJP-Medium.ttf",
     )
 
     try:
