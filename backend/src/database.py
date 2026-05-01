@@ -1,55 +1,87 @@
-import sqlite3
+import os
 from datetime import datetime, timezone
-from pathlib import Path
 
-DB_PATH = Path("/app/data/history.db")
+from dotenv import load_dotenv
+from sqlalchemy import (
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    create_engine,
+)
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+
+load_dotenv()
+
+DATABASE_URL = os.environ["DATABASE_URL"]
+
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(bind=engine)
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String, nullable=False, unique=True)
+    hashed_password = Column(String, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class History(Base):
+    __tablename__ = "history"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    qr_type = Column(String, nullable=False, default="url")
+    content = Column(Text, nullable=False)
+    label_text = Column(String)
+    label_position = Column(String)
+    expires_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 def init_db():
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL UNIQUE,
-                hashed_password TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
+    Base.metadata.create_all(bind=engine)
 
-            CREATE TABLE IF NOT EXISTS history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-                qr_type TEXT NOT NULL DEFAULT 'url',
-                content TEXT NOT NULL,
-                label_text TEXT,
-                label_position TEXT,
-                expires_at TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            """)
+
+def get_db() -> Session:
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 def create_user(username: str, hashed_password: str):
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute(
-            "INSERT INTO users (username, hashed_password) VALUES (?, ?)",
-            (username, hashed_password),
-        )
+    with SessionLocal() as db:
+        user = User(username=username, hashed_password=hashed_password)
+        db.add(user)
+        db.commit()
 
 
 def get_user_by_username(username: str):
-    with sqlite3.connect(DB_PATH) as conn:
-        row = conn.execute(
-            "SELECT id, username, hashed_password FROM users WHERE username = ?",
-            (username,),
-        ).fetchone()
-    if not row:
-        return None
-    return {"id": row[0], "username": row[1], "hashed_password": row[2]}
+    with SessionLocal() as db:
+        user = db.query(User).filter(User.username == username).first()
+        if not user:
+            return None
+        return {
+            "id": user.id,
+            "username": user.username,
+            "hashed_password": user.hashed_password,
+        }
 
 
 def delete_user(user_id: int):
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    with SessionLocal() as db:
+        db.query(User).filter(User.id == user_id).delete()
+        db.commit()
 
 
 def save_history(
@@ -60,53 +92,61 @@ def save_history(
     label_position: str,
     expires_at: str | None,
 ):
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute(
-            """
-            INSERT INTO history
-                (user_id, qr_type, content, label_text, label_position, expires_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (user_id, qr_type, content, label_text, label_position, expires_at),
+    with SessionLocal() as db:
+        expires = None
+        if expires_at:
+            try:
+                expires = datetime.fromisoformat(expires_at)
+            except ValueError:
+                expires = None
+        history = History(
+            user_id=user_id,
+            qr_type=qr_type,
+            content=content,
+            label_text=label_text,
+            label_position=label_position,
+            expires_at=expires,
         )
+        db.add(history)
+        db.commit()
 
 
 def get_history(user_id: int):
-    now = datetime.now(timezone.utc).isoformat()
-    with sqlite3.connect(DB_PATH) as conn:
-        rows = conn.execute(
-            """
-            SELECT id, qr_type, content, label_text, label_position, expires_at, created_at
-            FROM history
-            WHERE user_id = ?
-              AND (expires_at IS NULL OR expires_at > ?)
-            ORDER BY created_at DESC
-            LIMIT 50
-            """,
-            (user_id, now),
-        ).fetchall()
-    return [
-        {
-            "id": row[0],
-            "qr_type": row[1],
-            "content": row[2],
-            "label_text": row[3],
-            "label_position": row[4],
-            "expires_at": row[5],
-            "created_at": row[6],
-        }
-        for row in rows
-    ]
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        rows = (
+            db.query(History)
+            .filter(
+                History.user_id == user_id,
+                (History.expires_at == None) | (History.expires_at > now),
+            )
+            .order_by(History.created_at.desc())
+            .limit(50)
+            .all()
+        )
+        return [
+            {
+                "id": r.id,
+                "qr_type": r.qr_type,
+                "content": r.content,
+                "label_text": r.label_text,
+                "label_position": r.label_position,
+                "expires_at": r.expires_at.isoformat() if r.expires_at else None,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ]
 
 
 def delete_history(history_id: int, user_id: int):
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute(
-            "DELETE FROM history WHERE id = ? AND user_id = ?",
-            (history_id, user_id),
-        )
+    with SessionLocal() as db:
+        db.query(History).filter(
+            History.id == history_id, History.user_id == user_id
+        ).delete()
+        db.commit()
 
 
 def delete_all_history(user_id: int):
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("DELETE FROM history WHERE user_id = ?", (user_id,))
+    with SessionLocal() as db:
+        db.query(History).filter(History.user_id == user_id).delete()
+        db.commit()
