@@ -1,79 +1,114 @@
-const BASE_URL = "https://qr-generator-fullstack.onrender.com";
+const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+
+const getToken = () => localStorage.getItem("token");
 
 const apiFetch = async (url, options = {}, defaultMessage) => {
+  const token = getToken();
+  const headers = {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...options.headers,
+  };
+
   try {
-    const response = await fetch(BASE_URL + url, options);
+    const response = await fetch(BASE_URL + url, { ...options, headers });
 
     if (!response.ok) {
       let message = defaultMessage;
-
       try {
         const errorData = await response.json();
-        if (errorData?.detail) {
-          message += `（${errorData.detail}）`;
-        }
-      } catch {
-        // JSONで返ってこない場合は無視
-      }
-
+        if (errorData?.detail) message += `（${errorData.detail}）`;
+      } catch {}
       throw new Error(message);
     }
 
     return response;
-
   } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error("サーバーに接続できません");
-    }
+    if (error instanceof TypeError) throw new Error("サーバーに接続できません");
     throw error;
   }
 };
 
-export const generateQR = async (url, labelText = "", labelPosition = "Top") => {
-  const response = await apiFetch(
-    '/api/qr',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        url: url,
-        label_text: labelText,
-        label_position: labelPosition,
-      }),
-    },
-    'QRコードの生成に失敗しました'
+export const register = async (username, password) => {
+  await apiFetch(
+    "/api/register",
+    { method: "POST", body: JSON.stringify({ username, password }) },
+    "登録に失敗しました"
   );
+};
 
-  const blob = await response.blob();
-  return URL.createObjectURL(blob);
+export const login = async (username, password) => {
+  const response = await apiFetch(
+    "/api/login",
+    { method: "POST", body: JSON.stringify({ username, password }) },
+    "ログインに失敗しました"
+  );
+  const data = await response.json();
+  localStorage.setItem("token", data.access_token);
+  localStorage.setItem("username", data.username);
+  return data;
+};
+
+export const logout = () => {
+  localStorage.removeItem("token");
+  localStorage.removeItem("username");
+};
+
+export const deleteAccount = async () => {
+  await apiFetch("/api/user", { method: "DELETE" }, "アカウント削除に失敗しました");
+  logout();
+};
+
+export const generateQR = async (qrType, content, labelText = "", labelPosition = "Top", expiresAt = null) => {
+  const token = getToken();
+  const body = {
+    qr_type: qrType,
+    content,
+    label_text: labelText,
+    label_position: labelPosition,
+    ...(token && expiresAt ? { expires_at: expiresAt } : {}),
+  };
+
+  const headers = {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
+  try {
+    const response = await fetch(BASE_URL + "/api/qr", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      let message = "QRコードの生成に失敗しました";
+      try {
+        const errorData = await response.json();
+        if (errorData?.detail) message += `（${errorData.detail}）`;
+      } catch {}
+      throw new Error(message);
+    }
+
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  } catch (error) {
+    if (error instanceof TypeError) throw new Error("サーバーに接続できません");
+    throw error;
+  }
 };
 
 export const fetchHistory = async () => {
-  const response = await apiFetch(
-    '/api/history',
-    {},
-    '履歴の取得に失敗しました'
-  );
-
+  const response = await apiFetch("/api/history", {}, "履歴の取得に失敗しました");
   return await response.json();
 };
 
 export const deleteHistoryItem = async (id) => {
-  await apiFetch(
-    `/api/history/${id}`,
-    { method: 'DELETE' },
-    '履歴の削除に失敗しました'
-  );
-
+  await apiFetch(`/api/history/${id}`, { method: "DELETE" }, "履歴の削除に失敗しました");
   return true;
 };
 
 export const deleteAllHistory = async () => {
-  await apiFetch(
-    '/api/history',
-    { method: 'DELETE' },
-    '履歴の削除に失敗しました'
-  );
-
+  await apiFetch("/api/history", { method: "DELETE" }, "履歴の削除に失敗しました");
   return true;
 };

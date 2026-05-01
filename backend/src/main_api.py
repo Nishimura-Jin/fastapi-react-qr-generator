@@ -1,5 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
+from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -43,14 +44,19 @@ app.add_middleware(
 
 
 # ================= 認証ヘルパー =================
-def get_current_user(authorization: str = Header(...)):
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="認証が必要です")
+def get_current_user_optional(authorization: Optional[str] = Header(default=None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
     token = authorization.removeprefix("Bearer ")
     payload = decode_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="トークンが無効です")
-    return payload
+    return payload if payload else None
+
+
+def get_current_user(authorization: Optional[str] = Header(default=None)):
+    user = get_current_user_optional(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="認証が必要です")
+    return user
 
 
 # ================= スキーマ =================
@@ -69,7 +75,7 @@ class QRRequest(BaseModel):
     content: str
     label_text: str = ""
     label_position: str = "Top"
-    expires_at: str | None = None
+    expires_at: Optional[str] = None
 
 
 # ================= ルート =================
@@ -106,11 +112,11 @@ def remove_user(current_user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
-# ---- QRコード生成 ----
+# ---- QRコード生成（ゲスト・ログイン両対応） ----
 @app.post("/api/qr")
 async def create_qr(
     body: QRRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: Optional[dict] = Depends(get_current_user_optional),
 ):
     try:
         qr_bytes = generate_qr_code(
@@ -119,21 +125,22 @@ async def create_qr(
             body.label_text,
             body.label_position,
         )
-        save_history(
-            user_id=current_user["user_id"],
-            qr_type=body.qr_type,
-            content=body.content,
-            label_text=body.label_text,
-            label_position=body.label_position,
-            expires_at=body.expires_at,
-        )
+        if current_user:
+            save_history(
+                user_id=current_user["user_id"],
+                qr_type=body.qr_type,
+                content=body.content,
+                label_text=body.label_text,
+                label_position=body.label_position,
+                expires_at=body.expires_at,
+            )
         return Response(content=qr_bytes, media_type="image/png")
     except Exception as e:
         logging.error(f"QR生成エラー: {e}")
         raise HTTPException(status_code=500, detail="QRコードの生成に失敗しました")
 
 
-# ---- 履歴管理 ----
+# ---- 履歴管理（ログイン必須） ----
 @app.get("/api/history")
 def list_history(current_user: dict = Depends(get_current_user)):
     return get_history(current_user["user_id"])
