@@ -25,7 +25,19 @@ from .qr_service import generate_qr_code
 
 logging.basicConfig(level=logging.INFO)
 
-limiter = Limiter(key_func=get_remote_address)
+
+def get_rate_limit_key(request: Request) -> str:
+    auth = request.headers.get("authorization", "")
+    if auth.startswith("Bearer "):
+        token = auth.removeprefix("Bearer ")
+        payload = decode_token(token)
+        if payload:
+            # ログインユーザーはユーザーIDをキーにして上限を実質無制限にする
+            return f"user:{payload['user_id']}"
+    return get_remote_address(request)
+
+
+limiter = Limiter(key_func=get_rate_limit_key)
 
 
 @asynccontextmanager
@@ -120,8 +132,10 @@ def remove_user(current_user: dict = Depends(get_current_user)):
 
 
 # ---- QRコード生成（ゲスト・ログイン両対応） ----
+# 未ログインユーザーはIPアドレスごとに1分間10回まで
+# ログインユーザーはユーザーIDをキーにするため実質無制限
 @app.post("/api/qr")
-@limiter.limit("10/minute", exempt_when=lambda request: _is_authenticated(request))
+@limiter.limit("10/minute")
 async def create_qr(
     request: Request,
     body: QRRequest,
@@ -147,14 +161,6 @@ async def create_qr(
     except Exception as e:
         logging.error(f"QR生成エラー: {e}")
         raise HTTPException(status_code=500, detail="QRコードの生成に失敗しました")
-
-
-def _is_authenticated(request: Request) -> bool:
-    auth = request.headers.get("authorization", "")
-    if not auth.startswith("Bearer "):
-        return False
-    token = auth.removeprefix("Bearer ")
-    return bool(decode_token(token))
 
 
 # ---- 履歴管理（ログイン必須） ----
